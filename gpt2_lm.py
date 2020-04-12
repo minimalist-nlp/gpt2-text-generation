@@ -6,6 +6,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, RandomSampler
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
@@ -13,6 +14,7 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel
 import pytorch_lightning as pl
 from gpt2_tokenizer import GPT2TextEncoder
 from dataloader import text_dataset
+from utils import top_k_top_p_filtering
 from test_tube import HyperOptArgumentParser
 from torchnlp.encoders import LabelEncoder
 from torchnlp.utils import collate_tensors
@@ -29,19 +31,16 @@ class GPT2LanguageModel(pl.LightningModule):
         super(GPT2LanguageModel, self).__init__()
         self.hparams = hparams
         self.batch_size = hparams.batch_size
-        self.output_units = 768 #self.gpt2.state_dict()["ln_f.bias"].shape[0] --> bias from last layer of the GPT2 model
+        self.output_units = 768  # self.gpt2.state_dict()["ln_f.bias"].shape[0] --> bias from last layer of the GPT2 model
         # build model
         self.__build_model()
 
         # Loss criterion initialization.
         self.__build_loss()
 
-
     def __build_model(self) -> None:
         """ Init GPT2 model + tokenizer + language model head."""
-        self.gpt2 = GPT2LMHeadModel.from_pretrained(
-            "gpt2", output_hidden_states=True
-        )
+        self.gpt2 = GPT2LMHeadModel.from_pretrained("gpt2", output_hidden_states=True)
         # Tokenizer
         self.tokenizer = GPT2TextEncoder("gpt2")
         self.gpt2.resize_token_embeddings(len(self.tokenizer.tokenizer))
@@ -75,20 +74,33 @@ class GPT2LanguageModel(pl.LightningModule):
         with torch.no_grad():
             input_seq = sample["text"]
             inputs = self.tokenizer.encode(input_seq)
-            bos_tokens = torch.full([1], self.tokenizer.stoi["<|endoftext|>"], dtype=torch.long)
+            bos_tokens = torch.full(
+                [1], self.tokenizer.stoi["<|endoftext|>"], dtype=torch.long
+            )
             shifted_input = torch.cat((bos_tokens, inputs))
-            trg_mask = (shifted_input[:len(inputs)+1] != self.tokenizer.padding_index).unsqueeze(1)
-            output_seq = shifted_input[:len(inputs)+1]
-            k = 1
+            trg_mask = (
+                shifted_input[: len(inputs) + 1] != self.tokenizer.padding_index
+            ).unsqueeze(1)
+            output_seq = shifted_input[: len(inputs) + 1]
             predicted_token = torch.Tensor([0])
-            while predicted_token.unsqueeze(-1)[0] != self.tokenizer.padding_index:
+            while (
+                predicted_token.unsqueeze(-1)[0] != self.tokenizer.padding_index
+                and len(output_seq) < 50
+            ):
                 outputs = self.forward(output_seq)
                 lm_logits = outputs["lm_logits"]
                 logits = lm_logits[-1, :]
-                predicted_token = logits.max(-1)[1]
-                output_seq = torch.cat([output_seq, predicted_token.unsqueeze(-1)])
-                k+=1       
-            output_seq = output_seq[1:-1]
+                top_k, top_p, temperature = 0, 0.95, 1
+                filtered_logits = top_k_top_p_filtering(
+                    logits, top_k=top_k, top_p=top_p, temperature=temperature
+                )
+                probabilities = F.softmax(filtered_logits, dim=-1)
+                probabilities_logits, probabilities_position = torch.sort(
+                    probabilities, descending=True
+                )
+                predicted_token = torch.multinomial(probabilities, 1)
+                output_seq = torch.cat([output_seq, predicted_token])
+            output_seq = output_seq[1:-1] if predicted_token.unsqueeze(-1)[0] == self.tokenizer.padding_index else output_seq[1:]
             output_sentence = self.tokenizer.decode(output_seq)
             print(output_sentence)
 
@@ -118,7 +130,9 @@ class GPT2LanguageModel(pl.LightningModule):
         """
         batch_logits = predictions["lm_logits"][..., :-1, :].contiguous()
         target_labels = labels["tokens"][..., 1:].contiguous()
-        loss = self._loss(batch_logits.view(-1, batch_logits.size(-1)), target_labels.view(-1))
+        loss = self._loss(
+            batch_logits.view(-1, batch_logits.size(-1)), target_labels.view(-1)
+        )
         return loss
 
     def prepare_sample(self, sample: list) -> (dict):
@@ -201,24 +215,16 @@ class GPT2LanguageModel(pl.LightningModule):
         val_loss_mean /= len(outputs)
         perplexity = torch.exp(val_loss_mean.clone().detach())
         tqdm_dict = {"val_loss": val_loss_mean, "perplexity": perplexity}
-        result = {
-            "progress_bar": tqdm_dict,
-            "log": tqdm_dict,
-            "perplexity": perplexity
-        }
+        result = {"progress_bar": tqdm_dict, "log": tqdm_dict, "perplexity": perplexity}
         return result
 
     def configure_optimizers(self):
         """ Sets Learning rate for different parameter groups. """
         parameters = [
-            {
-                "params": self.gpt2.parameters(),
-                "lr": self.hparams.learning_rate,
-            },
+            {"params": self.gpt2.parameters(), "lr": self.hparams.learning_rate,},
         ]
         optimizer = optim.Adam(parameters, lr=self.hparams.learning_rate)
         return [optimizer], []
-
 
     def __retrieve_dataset(self, train=True, val=True, test=True):
         """ Retrieves task specific dataset """
@@ -269,10 +275,7 @@ class GPT2LanguageModel(pl.LightningModule):
             - updated parser
         """
         parser.add_argument(
-            "--learning_rate",
-            default=3e-05,
-            type=float,
-            help="Learning rate.",
+            "--learning_rate", default=3e-05, type=float, help="Learning rate.",
         )
         # Data Args:
         parser.add_argument(

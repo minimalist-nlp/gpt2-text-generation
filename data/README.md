@@ -1,0 +1,1 @@
+The datasets were originally downloaded from Assignment 1 of the course [Neural Networks for NLP](http://www.phontron.com/class/nn4nlp2020/assignments.html).

@@ -7,7 +7,7 @@ This repo uses the following libraries as the main building blocks:
 - [Transformers](https://huggingface.co/transformers/index.html)
 - [PyTorch-NLP](https://pytorchnlp.readthedocs.io/en/latest/index.html)
 
-and is inspired on Ricardo's [Minimalist Implementation of a BERT Sentence Classifier](https://github.com/ricardorei/lightning-text-classification).
+and is inspired on [Minimalist Implementation of a BERT Sentence Classifier](https://github.com/ricardorei/lightning-text-classification).
 
 ## Requirements:
 
@@ -16,7 +16,7 @@ This project uses Python 3.7
 Create a virtual env with (outside the project folder):
 
 ```bash
-virtualenv -p python3.7 sbert-env
+virtualenv -p python3 gpt2-env
 source gpt2-env/bin/activate
 ```
 
@@ -80,7 +80,7 @@ python training.py \
     --loader_workers 4 \
 ```
 
-Testing the model on shell:
+You can generate sentences with the model using (you may change the sampling parameters in the `generate` function in `gpt2_lm.py`):
 ```bash
 python interact.py --experiment experiments/lightning_logs/version_{date}
 ```
@@ -94,4 +94,4 @@ tensorboard --logdir="experiments/lightning_logs/"
 ```
 
 ### Code Style:
-To make sure all the code follows the same style we use [Black](https://github.com/psf/black).# gpt2-languagemodel
+To make sure all the code follows the same style I use [Black](https://github.com/psf/black).
