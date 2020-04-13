@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import torch
-from transformers import GPT2Tokenizer
+from transformers import AutoTokenizer
 
 from torchnlp.encoders import Encoder
 from torchnlp.encoders.text import stack_and_pad_tensors
@@ -14,7 +14,7 @@ class GPT2TextEncoder(TextEncoder):
 
     def __init__(self, pretrained_model) -> None:
         self.enforce_reversible = False
-        self.tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model)
+        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
         self.stoi = self.tokenizer.encoder
         self.itos = self.tokenizer.decoder
         special_tokens_dict = {'pad_token': '<PAD>'}
