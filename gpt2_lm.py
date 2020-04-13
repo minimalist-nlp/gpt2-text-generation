@@ -125,6 +125,7 @@ class GPT2LanguageModel(pl.LightningModule):
     def loss(self, predictions: dict, labels: dict) -> torch.tensor:
         """
         Computes Causal Language Modelling (CLM) Loss value according to a loss function.
+        Note that the labels **are shifted** inside the Hugging Face model, i.e. you can set ``labels = inputs``
         :param predictions: model specific output. Must contain a key 'lm_logits' with
             a tensor [batch_size x 1] with model predictions
         :param labels: Labels for language modeling.
