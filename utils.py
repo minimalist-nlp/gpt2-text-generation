@@ -51,3 +51,18 @@ def top_k_top_p_filtering(
         logits[indices_to_remove] = filter_value
 
     return logits
+
+
+def load_weights_lm_head(model, original_model):
+    pretrained_dict = original_model.state_dict()
+    pretrained_dict["lm_head.weight"] = torch.cat(
+        (
+            pretrained_dict["lm_head.weight"],
+            torch.rand(model.gpt2.vocab_size - model.tokenizer.vocab_size, 768),
+        ),
+        0,
+    )
+    model_dict = model.state_dict()
+    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+    model_dict.update(pretrained_dict)
+    model.load_state_dict(model_dict)

@@ -8,13 +8,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-from torch.utils.data import DataLoader, RandomSampler
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer, GPT2LMHeadModel, AutoModel
 
 import pytorch_lightning as pl
 from gpt2_tokenizer import GPT2TextEncoder
 from dataloader import text_dataset
-from utils import top_k_top_p_filtering
+from utils import top_k_top_p_filtering, load_weights_lm_head
 from test_tube import HyperOptArgumentParser
 from torchnlp.encoders import LabelEncoder
 from torchnlp.utils import collate_tensors
@@ -40,10 +40,18 @@ class GPT2LanguageModel(pl.LightningModule):
 
     def __build_model(self) -> None:
         """ Init GPT2 model + tokenizer + language model head."""
-        self.gpt2 = GPT2LMHeadModel.from_pretrained("gpt2", output_hidden_states=True)
+        self.gpt2 = AutoModel.from_pretrained("distilgpt2", output_hidden_states=True)
         # Tokenizer
-        self.tokenizer = GPT2TextEncoder("gpt2")
+        self.tokenizer = GPT2TextEncoder("distilgpt2")
+
+        # Resize embeddings to include the added tokens
         self.gpt2.resize_token_embeddings(len(self.tokenizer.tokenizer))
+
+        self.lm_head = nn.Linear(self.output_units, self.gpt2.vocab_size, bias=False)
+
+        # Transfer weights from the GPT2LMHeadModel to our LM Head and add dimensions for added tokens
+        original_model = GPT2LMHeadModel.from_pretrained("gpt2")
+        load_weights_lm_head(self, original_model)
 
     def __build_loss(self):
         """ Initializes the loss function/s. """
@@ -118,14 +126,15 @@ class GPT2LanguageModel(pl.LightningModule):
             Dictionary with model outputs (e.g: logits)
         """
         gpt2_outputs = self.gpt2(tokens)
-        lm_logits = gpt2_outputs[0]
+        hidden_states = gpt2_outputs[0]
+        lm_logits = self.lm_head(hidden_states)
 
         return {"lm_logits": lm_logits}
 
     def loss(self, predictions: dict, labels: dict) -> torch.tensor:
         """
         Computes Causal Language Modelling (CLM) Loss value according to a loss function.
-        Note that the labels **are shifted** inside the Hugging Face model, i.e. you can set ``labels = inputs``
+        Note that the labels **are shifted** inside the Hugging model, i.e. you can set ``labels = inputs``
         :param predictions: model specific output. Must contain a key 'lm_logits' with
             a tensor [batch_size x 1] with model predictions
         :param labels: Labels for language modeling.
@@ -241,7 +250,6 @@ class GPT2LanguageModel(pl.LightningModule):
         self._train_dataset = self.__retrieve_dataset(val=False, test=False)[0]
         return DataLoader(
             dataset=self._train_dataset,
-            sampler=RandomSampler(self._train_dataset),
             batch_size=self.hparams.batch_size,
             collate_fn=self.prepare_sample,
             num_workers=self.hparams.loader_workers,
