@@ -100,7 +100,11 @@ class GPT2LanguageModel(pl.LightningModule):
                 )
                 predicted_token = torch.multinomial(probabilities, 1)
                 output_seq = torch.cat([output_seq, predicted_token])
-            output_seq = output_seq[1:-1] if predicted_token.unsqueeze(-1)[0] == self.tokenizer.padding_index else output_seq[1:]
+            output_seq = (
+                output_seq[1:-1]
+                if predicted_token.unsqueeze(-1)[0] == self.tokenizer.padding_index
+                else output_seq[1:]
+            )
             output_sentence = self.tokenizer.decode(output_seq)
             print(output_sentence)
 
