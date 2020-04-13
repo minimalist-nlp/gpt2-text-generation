@@ -7,7 +7,7 @@ This repo uses the following libraries as the main building blocks:
 - [Transformers](https://huggingface.co/transformers/index.html)
 - [PyTorch-NLP](https://pytorchnlp.readthedocs.io/en/latest/index.html)
 
-and is inspired on [Minimalist Implementation of a BERT Sentence Classifier](https://github.com/ricardorei/lightning-text-classification).
+You can also check this minimalist implementation for text classification: [Minimalist Implementation of a BERT Sentence Classifier](https://github.com/ricardorei/lightning-text-classification).
 
 ## Requirements:
 
